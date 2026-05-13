@@ -22,6 +22,9 @@ generated/
 
 **/.DS_Store
 .terraform/
+**/.terraform/*
 *.tfstate
+*.tfstate.*
+terraform.tfvars
 *.tfstate.backup
 .terraform.lock.hcl
