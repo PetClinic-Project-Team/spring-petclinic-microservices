@@ -28,6 +28,7 @@ spec:
       containers:
         - name: genai-service
           image: 989800606347.dkr.ecr.us-east-1.amazonaws.com/petclinic/spring-petclinic-genai-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8084
           env:
@@ -37,3 +38,8 @@ spec:
               value: http://config-server:8888
             - name: EUREKA_SERVER_URL
               value: http://discovery-server:8761/eureka/
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openai-secret
+                  key: openai-api-key
