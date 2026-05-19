@@ -54,6 +54,7 @@ jobs:
             "spring-petclinic-vets-service:spring-petclinic-vets-service"
             "spring-petclinic-visits-service:spring-petclinic-visits-service"
             "spring-petclinic-api-gateway:spring-petclinic-api-gateway"
+            "spring-petclinic-genai-service:spring-petclinic-genai-service"
           )
           for ENTRY in "${SERVICES[@]}"; do
             LOCAL_NAME="${ENTRY%%:*}"
