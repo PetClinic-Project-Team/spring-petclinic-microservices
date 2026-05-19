@@ -45,6 +45,14 @@ spring:
                 - CircuitBreaker=name=genaiCircuitBreaker,fallbackUri=/fallback
   reactor:
     context-propagation: auto
+
+resilience4j:
+  timelimiter:
+    instances:
+      genaiCircuitBreaker:
+        timeoutDuration: 60s
+      defaultCircuitBreaker:
+        timeoutDuration: 10s
 ---
 spring:
   config:
