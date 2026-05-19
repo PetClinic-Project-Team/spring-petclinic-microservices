@@ -38,3 +38,9 @@ spec:
               value: http://config-server:8888
             - name: EUREKA_SERVER_URL
               value: http://discovery-server:8761/eureka/
+            - name: RESILIENCE4J_TIMELIMITER_INSTANCES_GENAICIRCUITBREAKER_TIMEOUTDURATION
+              value: "60s"
+            - name: RESILIENCE4J_TIMELIMITER_INSTANCES_DEFAULTCIRCUITBREAKER_TIMEOUTDURATION
+              value: "10s"
+            - name: SPRING_CLOUD_CONFIG_OVERRIDE_NONE
+              value: "true"
