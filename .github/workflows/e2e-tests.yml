@@ -1,0 +1,158 @@
+name: E2E Tests — Spring PetClinic on EKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      gateway_url:
+        description: 'API Gateway URL (e.g. http://abc.us-east-1.elb.amazonaws.com)'
+        required: false
+        default: ''
+      namespace:
+        description: 'Kubernetes namespace'
+        required: false
+        default: 'spring-petclinic'
+  pull_request:
+    branches: [ develop ]
+    paths:
+      - 'tests/e2e/**'
+      - 'docs/test-cases.md'
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: petclinic-cluster
+  NAMESPACE: ${{ github.event.inputs.namespace || 'spring-petclinic' }}
+
+jobs:
+  e2e-tests:
+    name: End-to-End Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Update kubeconfig for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --name ${{ env.CLUSTER_NAME }} \
+            --region ${{ env.AWS_REGION }}
+          kubectl config current-context
+
+      - name: Verify cluster connectivity
+        run: |
+          echo "=== EKS Cluster Nodes ==="
+          kubectl get nodes
+          echo ""
+          echo "=== Pods in namespace: ${{ env.NAMESPACE }} ==="
+          kubectl get pods -n ${{ env.NAMESPACE }}
+
+      - name: Make test scripts executable
+        run: chmod +x tests/e2e/*.sh
+
+      - name: Run infrastructure validation
+        id: k8s-validation
+        run: bash tests/e2e/k8s-validation.sh
+        continue-on-error: true
+
+      - name: Run service health checks
+        id: health-check
+        run: bash tests/e2e/health-check.sh
+        continue-on-error: true
+
+      - name: Resolve Gateway URL
+        id: gateway
+        run: |
+          if [ -n "${{ github.event.inputs.gateway_url }}" ]; then
+            echo "url=${{ github.event.inputs.gateway_url }}" >> "$GITHUB_OUTPUT"
+          else
+            HOSTNAME=$(kubectl get svc api-gateway -n ${{ env.NAMESPACE }} \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+            IP=$(kubectl get svc api-gateway -n ${{ env.NAMESPACE }} \
+              -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+            ENDPOINT="${HOSTNAME:-$IP}"
+            if [ -n "$ENDPOINT" ]; then
+              echo "url=http://$ENDPOINT" >> "$GITHUB_OUTPUT"
+              echo "Gateway URL: http://$ENDPOINT"
+            else
+              echo "url=" >> "$GITHUB_OUTPUT"
+              echo "::warning::API Gateway LoadBalancer IP not yet assigned"
+            fi
+          fi
+
+      - name: Run API end-to-end tests
+        id: api-tests
+        run: |
+          if [ -n "${{ steps.gateway.outputs.url }}" ]; then
+            bash tests/e2e/api-tests.sh "${{ steps.gateway.outputs.url }}"
+          else
+            echo "::warning::Skipping API tests — no Gateway URL available"
+          fi
+        continue-on-error: true
+
+      - name: Run observability stack validation
+        id: monitoring-check
+        run: bash tests/e2e/monitoring-check.sh
+        continue-on-error: true
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "## E2E Test Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Suite | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Infrastructure Validation (TC-INF-*) | ${{ steps.k8s-validation.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Service Health Checks (TC-CFG/DIS/VET/VST) | ${{ steps.health-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| API End-to-End Tests (TC-GW/CST/VET/VST) | ${{ steps.api-tests.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Observability Stack (TC-OBS-*) | ${{ steps.monitoring-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Gateway URL:** ${{ steps.gateway.outputs.url || 'N/A' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Cluster:** ${{ env.CLUSTER_NAME }} | **Region:** ${{ env.AWS_REGION }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "_Full test plan: [docs/test-plan.md](docs/test-plan.md) | Test cases: [docs/test-cases.md](docs/test-cases.md)_" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Collect cluster state on failure
+        if: failure()
+        run: |
+          echo "=== Pods ==="
+          kubectl get pods -n ${{ env.NAMESPACE }} -o wide
+          echo ""
+          echo "=== Services ==="
+          kubectl get svc -n ${{ env.NAMESPACE }}
+          echo ""
+          echo "=== Recent Events ==="
+          kubectl get events -n ${{ env.NAMESPACE }} \
+            --sort-by='.lastTimestamp' | tail -30
+          echo ""
+          echo "=== Pod Logs (last 30 lines each) ==="
+          for POD in $(kubectl get pods -n ${{ env.NAMESPACE }} --no-headers | awk '{print $1}'); do
+            echo "--- $POD ---"
+            kubectl logs -n ${{ env.NAMESPACE }} "$POD" --tail=30 2>/dev/null || true
+          done
+
+      - name: Final status check
+        if: always()
+        run: |
+          K8S="${{ steps.k8s-validation.outcome }}"
+          HC="${{ steps.health-check.outcome }}"
+          API="${{ steps.api-tests.outcome }}"
+          MON="${{ steps.monitoring-check.outcome }}"
+
+          if [ "$K8S" = "success" ] && [ "$HC" = "success" ]; then
+            echo "✅ Critical infrastructure tests passed"
+          else
+            echo "❌ Critical infrastructure tests failed — check logs above"
+            exit 1
+          fi

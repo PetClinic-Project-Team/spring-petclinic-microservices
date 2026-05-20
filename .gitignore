@@ -32,3 +32,6 @@ logs/
 *.tfstate
 *.tfstate.backup
 .terraform.lock.hcl
+
+# Auto-generated test reports
+docs/test-run-report.txt
