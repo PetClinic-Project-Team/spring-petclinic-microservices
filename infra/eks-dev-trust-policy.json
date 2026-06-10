@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam::989800606347:user/chiomanwosu",
+          "arn:aws:iam::989800606347:user/steven",
+          "arn:aws:iam::989800606347:user/varun",
+          "arn:aws:iam::989800606347:user/kuntal"
+        ]
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
