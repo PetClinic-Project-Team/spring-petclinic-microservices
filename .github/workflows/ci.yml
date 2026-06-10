@@ -1,0 +1,139 @@
+name: Build, Push & Deploy to EKS
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: petclinic-cluster
+  K8S_NAMESPACE: spring-petclinic
+
+jobs:
+
+  build-and-push:
+    name: "CI: Build & Push Images"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build with Maven + Docker images
+        run: ./mvnw clean install -DskipTests -P buildDocker
+
+      - name: Tag and Push images to ECR
+        env:
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          SERVICES=(
+            "spring-petclinic-config-server:spring-petclinic-config-server"
+            "spring-petclinic-discovery-server:spring-petclinic-discovery-server"
+            "spring-petclinic-customers-service:spring-petclinic-customers-service"
+            "spring-petclinic-vets-service:spring-petclinic-vets-service"
+            "spring-petclinic-visits-service:spring-petclinic-visits-service"
+            "spring-petclinic-api-gateway:spring-petclinic-api-gateway"
+            "spring-petclinic-genai-service:spring-petclinic-genai-service"
+          )
+          for ENTRY in "${SERVICES[@]}"; do
+            LOCAL_NAME="${ENTRY%%:*}"
+            ECR_NAME="${ENTRY##*:}"
+
+            docker tag springcommunity/$LOCAL_NAME:latest \
+              $ECR_REGISTRY/petclinic/$ECR_NAME:latest
+
+            docker tag springcommunity/$LOCAL_NAME:latest \
+              $ECR_REGISTRY/petclinic/$ECR_NAME:$IMAGE_TAG
+
+            docker push $ECR_REGISTRY/petclinic/$ECR_NAME:latest
+            docker push $ECR_REGISTRY/petclinic/$ECR_NAME:$IMAGE_TAG
+
+            echo "Done: $ECR_NAME"
+          done
+
+  deploy:
+    name: "CD: Deploy to EKS"
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name ${{ env.EKS_CLUSTER_NAME }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Ensure namespace exists
+        run: |
+          kubectl create namespace ${{ env.K8S_NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy to EKS
+        env:
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        run: |
+          if [ -d "k8s/" ] && [ "$(find k8s/ -name '*.yaml' | head -1)" ]; then
+            echo "Updating image references in manifests..."
+            find k8s/ -name '*.yaml' -exec sed -i \
+              "s|YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com|$ECR_REGISTRY|g" {} +
+
+            echo "Applying Kubernetes manifests..."
+            kubectl apply -f k8s/ -n ${{ env.K8S_NAMESPACE }} --recursive
+
+            DEPLOYMENTS=$(kubectl get deployments -n ${{ env.K8S_NAMESPACE }} \
+              -o name 2>/dev/null || true)
+
+            if [ -n "$DEPLOYMENTS" ]; then
+              for DEPLOY in $DEPLOYMENTS; do
+                kubectl rollout restart $DEPLOY -n ${{ env.K8S_NAMESPACE }}
+              done
+
+              for DEPLOY in $DEPLOYMENTS; do
+                kubectl rollout status $DEPLOY \
+                  -n ${{ env.K8S_NAMESPACE }} --timeout=300s || true
+              done
+            fi
+
+            echo ""
+            echo "=========================================="
+            echo "  DEPLOYMENT STATUS"
+            echo "=========================================="
+            kubectl get pods -n ${{ env.K8S_NAMESPACE }}
+            echo ""
+            kubectl get svc -n ${{ env.K8S_NAMESPACE }}
+          else
+            echo "No k8s/ manifests found. Skipping deployment."
+            echo "Waiting for P4, P5, P6 to add Kubernetes manifest files."
+          fi

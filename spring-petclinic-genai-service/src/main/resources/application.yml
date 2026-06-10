@@ -11,7 +11,6 @@ spring:
     chat:
       client:
         enabled: true
-    # These apply when using spring-ai-starter-model-azure-openai
     azure:
       openai:
         api-key: ${AZURE_OPENAI_KEY}
@@ -20,15 +19,12 @@ spring:
           options:
             temperature: 0.7
             deployment-name: gpt-4o
-    # These apply when using spring-ai-starter-model-openai
     openai:
       api-key: ${OPENAI_API_KEY:demo}
       chat:
         options:
             temperature: 0.7
             model: gpt-4o-mini
-
-
 logging:
   level:
     org:
@@ -43,3 +39,13 @@ spring:
     activate:
       on-profile: docker
     import: configserver:http://config-server:8888
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true

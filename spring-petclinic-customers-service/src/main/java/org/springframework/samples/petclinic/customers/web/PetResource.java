@@ -22,7 +22,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.samples.petclinic.customers.model.*;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
 /**
@@ -34,16 +33,22 @@ import java.util.List;
  */
 @RestController
 @Timed("petclinic.pet")
-class PetResource {
+public class PetResource {
 
     private static final Logger log = LoggerFactory.getLogger(PetResource.class);
 
     private final PetRepository petRepository;
     private final OwnerRepository ownerRepository;
 
-    PetResource(PetRepository petRepository, OwnerRepository ownerRepository) {
+    public PetResource(PetRepository petRepository, OwnerRepository ownerRepository) {
         this.petRepository = petRepository;
         this.ownerRepository = ownerRepository;
+    }
+
+    @DeleteMapping("/owners/*/pets/{petId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deletePet(@PathVariable("petId") int petId) {
+        petRepository.deleteById(petId);
     }
 
     @GetMapping("/petTypes")
@@ -53,13 +58,10 @@ class PetResource {
 
     @PostMapping("/owners/{ownerId}/pets")
     @ResponseStatus(HttpStatus.CREATED)
-    public Pet processCreationForm(
-        @RequestBody PetRequest petRequest,
-        @PathVariable("ownerId") @Min(1) int ownerId) {
-
+    public Pet processCreationForm(@RequestBody PetRequest petRequest,
+                                   @PathVariable("ownerId") @Min(1) int ownerId) {
         Owner owner = ownerRepository.findById(ownerId)
             .orElseThrow(() -> new ResourceNotFoundException("Owner " + ownerId + " not found"));
-
         final Pet pet = new Pet();
         owner.addPet(pet);
         return save(pet, petRequest);
@@ -74,13 +76,9 @@ class PetResource {
     }
 
     private Pet save(final Pet pet, final PetRequest petRequest) {
-
         pet.setName(petRequest.name());
         pet.setBirthDate(petRequest.birthDate());
-
-        petRepository.findPetTypeById(petRequest.typeId())
-            .ifPresent(pet::setType);
-
+        petRepository.findPetTypeById(petRequest.typeId()).ifPresent(pet::setType);
         log.info("Saving pet {}", pet);
         return petRepository.save(pet);
     }
@@ -91,10 +89,8 @@ class PetResource {
         return new PetDetails(pet);
     }
 
-
     private Pet findPetById(int petId) {
         return petRepository.findById(petId)
             .orElseThrow(() -> new ResourceNotFoundException("Pet " + petId + " not found"));
     }
-
 }

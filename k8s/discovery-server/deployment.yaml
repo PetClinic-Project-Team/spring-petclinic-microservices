@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery-server
+  namespace: spring-petclinic
+  labels:
+    app: discovery-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discovery-server
+  template:
+    metadata:
+      labels:
+        app: discovery-server
+    spec:
+      initContainers:
+        - name: wait-for-config-server
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              until curl -sf http://config-server:8888/actuator/health; do
+                echo "Waiting for config-server..."
+                sleep 5
+              done
+              echo "Config server is ready!"
+      containers:
+        - name: discovery-server
+          image: springcommunity/spring-petclinic-discovery-server:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8761
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "docker"
+            - name: CONFIG_SERVER_URL
+              value: "http://config-server:8888"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8761
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8761
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3

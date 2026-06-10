@@ -21,6 +21,13 @@ target/
 generated/
 
 **/.DS_Store
+# Build artifacts for services
+**/target/
+**/*.class
+**/*.jar
+*.log
+logs/
+**/logs/
 .terraform/
 **/.terraform/*
 *.tfstate
@@ -28,3 +35,6 @@ generated/
 terraform.tfvars
 *.tfstate.backup
 .terraform.lock.hcl
+
+# Auto-generated test reports
+docs/test-run-report.txt

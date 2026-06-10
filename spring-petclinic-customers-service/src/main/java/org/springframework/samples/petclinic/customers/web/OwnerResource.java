@@ -41,6 +41,12 @@ import java.util.Optional;
 @Timed("petclinic.owner")
 class OwnerResource {
 
+    @DeleteMapping("/{ownerId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteOwner(@PathVariable("ownerId") @Min(1) int ownerId) {
+        ownerRepository.deleteById(ownerId);
+    }
+
     private static final Logger log = LoggerFactory.getLogger(OwnerResource.class);
 
     private final OwnerRepository ownerRepository;

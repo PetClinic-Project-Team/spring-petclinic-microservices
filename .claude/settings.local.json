@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./mvnw.cmd -pl spring-petclinic-vets-service test)",
+      "Bash(docker compose:*)",
+      "Bash(taskkill /PID 32480 /F)"
+    ]
+  }
+}

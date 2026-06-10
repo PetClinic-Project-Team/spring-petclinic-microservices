@@ -45,9 +45,31 @@ spring:
                 - CircuitBreaker=name=genaiCircuitBreaker,fallbackUri=/fallback
   reactor:
     context-propagation: auto
+
+resilience4j:
+  timelimiter:
+    instances:
+      genaiCircuitBreaker:
+        timeoutDuration: 60s
+      defaultCircuitBreaker:
+        timeoutDuration: 10s
 ---
 spring:
   config:
     activate:
       on-profile: docker
     import: configserver:http://config-server:8888
+
+---
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus,health
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true

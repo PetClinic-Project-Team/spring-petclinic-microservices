@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vets-service
+  namespace: spring-petclinic
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vets-service
+  template:
+    metadata:
+      labels:
+        app: vets-service
+    spec:
+      containers:
+        - name: vets-service
+          image: springcommunity/spring-petclinic-vets-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "docker,mysql"
+            - name: CONFIG_SERVER_URL
+              value: http://config-server:8888
+            - name: EUREKA_SERVER_URL
+              value: http://discovery-server:8761/eureka/
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:mysql://vets-db-mysql:3306/petclinic?allowPublicKeyRetrieval=true&useSSL=false&zeroDateTimeBehavior=convertToNull"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-cred
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-cred
+                  key: password
+            - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+              value: "none"
+            - name: SPRING_SQL_INIT_MODE
+              value: "always"
+            - name: SPRING_JPA_DEFER_DATASOURCE_INITIALIZATION
+              value: "true"

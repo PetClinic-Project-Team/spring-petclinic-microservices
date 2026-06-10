@@ -1,4 +1,17 @@
 services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: petclinic
+      POSTGRES_USER: petclinic
+      POSTGRES_PASSWORD: petclinic
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "petclinic"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
   config-server:
     image: springcommunity/spring-petclinic-config-server
     container_name: config-server
@@ -111,7 +124,7 @@ services:
       discovery-server:
         condition: service_healthy
     ports:
-     - 8080:8080
+     - 8085:8080
 
   tracing-server:
     image: openzipkin/zipkin

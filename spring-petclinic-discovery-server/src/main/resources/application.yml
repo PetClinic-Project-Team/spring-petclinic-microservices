@@ -4,7 +4,6 @@ spring:
   config:
     import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888/}
 
-# Avoid some debugging logs at startup
 logging:
   level:
     org:
@@ -19,3 +18,21 @@ spring:
       on-profile: docker
     import: configserver:http://config-server:8888
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus
+  metrics:
+    export:
+      prometheus:
+        include: "*"
+
+  endpoint:
+    prometheus:
+      access: unrestricted
+
+  prometheus:
+    metrics:
+      export:
+        enabled: true
